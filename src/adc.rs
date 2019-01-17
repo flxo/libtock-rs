@@ -1,4 +1,4 @@
-use callback::{CallbackSubscription, SubscribableCallback};
+use callback::{Returncode, CallbackSubscription, SubscribableCallback};
 use result;
 use syscalls;
 
@@ -8,9 +8,9 @@ pub const BUFFER_SIZE: usize = 128;
 mod command {
     pub const COUNT: usize = 0;
     pub const START: usize = 1;
-    // pub const START_REPEAT: usize = 2;
-    // pub const START_REPEAT_BUFFER: usize = 3;
-    // pub const START_REPEAT_BUFFER_ALT: usize = 4;
+    pub const START_REPEAT: usize = 2;
+    pub const START_REPEAT_BUFFER: usize = 3;
+    pub const START_REPEAT_BUFFER_ALT: usize = 4;
     pub const STOP: usize = 5;
 }
 
@@ -24,13 +24,25 @@ mod allow {
 }
 
 #[derive(Debug)]
-pub enum AdcError {
+pub enum Error {
     NotSupported,
     SubscriptionFailed,
     Busy,
     Invalid,
     Fail,
-    Other(isize),
+    Other(ReturnCode),
+}
+
+impl<T: Sized> From<ReturnCode> for Result<T, Error> {
+    fn from(code: RetunCode) -> Result<T, Error> {
+        match code {
+            Success(_) => Ok(()),
+            Fail => Err(Error::Fail),
+            Busy => Err(Error::Busy),
+            Inval => Err(Error::Invalid),
+            e => Err(Error::Other(e)),
+        }
+    }
 }
 
 #[repr(align(32))]
@@ -63,21 +75,20 @@ impl<'a, CB> WithCallback<CB>
 where
     Self: SubscribableCallback,
 {
-    pub fn init(&mut self) -> Result<Adc, AdcError> {
+    pub fn init(&mut self) -> Result<Adc, Error> {
         let count = unsafe { syscalls::command(DRIVER_NUM, command::COUNT, 0, 0) };
         if count < 1 {
             return Err(AdcError::NotSupported);
         }
 
-        let subscription = syscalls::subscribe(DRIVER_NUM, subscribe::SUBSCRIBE_CALLBACK, self);
-
-        match subscription {
-            Ok(subscription) => Ok(Adc {
-                count: count as usize,
-                subscription,
-            }),
-            Err(result::ENOMEM) => Err(AdcError::SubscriptionFailed),
-            Err(unexpected) => Err(AdcError::Other(unexpected)),
+        match syscalls::subscribe(DRIVER_NUM, subscribe::SUBSCRIBE_CALLBACK, self) {
+            Ok(subscription) => {
+                Adc {
+                    count: count as usize,
+                    subscription,
+                }
+            }
+            Err(e) => e.into(),
         }
     }
 }
@@ -106,7 +117,11 @@ impl<'a> Adc<'a> {
 
     /// Start a single sample of channel
     pub fn sample(&self, channel: usize) -> Result<(), AdcError> {
-        match unsafe { syscalls::command(DRIVER_NUM, command::START, channel, 0) } {
+        let return_code = unsafe { syscalls::command(DRIVER_NUM, command::START, channel, 0) };
+        match return_code.into() {
+            syscalls::ReturnCode::Success(_) => Ok(())
+            _ => 
+        }
             result::SUCCESS => Ok(()),
             result::EBUSY => Err(AdcError::Busy),
             result::FAIL => Err(AdcError::Fail),
@@ -115,12 +130,12 @@ impl<'a> Adc<'a> {
     }
 
     /// Start continonous sampling of channel
-    pub fn sample_continous(&self, _channel: usize) -> Result<(), AdcError> {
+    pub fn sample_continous(&self, channel: usize) -> Result<(), AdcError> {
         unimplemented!()
     }
 
     /// Start continus sampling to first buffer
-    pub fn sample_continous_buffered(&self) {
+    pub fn sample_continous_buffered(&self) -> Result<(), AdcBuffer> {
         unimplemented!()
     }
 

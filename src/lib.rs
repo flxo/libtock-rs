@@ -37,13 +37,23 @@ pub mod timer;
 
 #[cfg(target_arch = "arm")]
 pub mod entry_point;
+
 #[cfg(target_arch = "arm")]
 mod lang_items;
+
 #[cfg(target_arch = "arm")]
 pub mod syscalls;
+
+#[cfg(target_arch = "arm")]
+pub mod syscalls_new;
+
 #[cfg(not(target_arch = "arm"))]
-#[path = "syscalls_mock.rs"]
+#[path = "syscall_mock.rs"]
 mod syscalls;
+
+#[cfg(not(target_arch = "arm"))]
+#[path = "syscalls_new_mock.rs"]
+mod syscalls_new;
 
 #[cfg(target_arch = "arm")]
 #[global_allocator]
